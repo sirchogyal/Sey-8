@@ -102,32 +102,41 @@
   }
   
   // ==================== UTILITIES ====================
-  function showStatus(msg, isError = false) {
-    statusDiv.textContent = msg;
-    statusDiv.style.background = isError ? "rgba(220, 38, 38, 0.9)" : "rgba(0, 0, 0, 0.75)";
-    setTimeout(() => {
-      if (statusDiv.textContent === msg) {
-        if (!accessToken && !isAwaitingSignIn) {
-          if (editor.value.trim() && editor.value !== "Start writing your notes...") {
-            statusDiv.textContent = "📝 Local draft - Sign in to save to cloud";
-          } else {
-            statusDiv.textContent = "✨ Ready";
-          }
-        } else if (!accessToken && isAwaitingSignIn) {
-          statusDiv.textContent = "⚠️ Sign in to save your work";
-        } else if (isOffline) {
-          statusDiv.textContent = "📴 Offline mode - edits will sync when online";
-        } else if (currentFileId) {
-          statusDiv.textContent = `✅ ${currentFileName?.replace("_AnyNotes.txt", "") || "note"}`;
-        } else if (editor.value.trim() && editor.value !== "Start writing your notes...") {
-          statusDiv.textContent = "📝 Click Save to secure";
+   function showStatus(msg, isError = false) {
+  statusDiv.textContent = msg;
+  statusDiv.style.background = isError ? "rgba(220, 38, 38, 0.9)" : "rgba(0, 0, 0, 0.75)";
+  setTimeout(() => {
+    if (statusDiv.textContent === msg) {
+      if (!accessToken && !isAwaitingSignIn) {
+        if (editor.value.trim() && editor.value !== "Start writing your notes...") {
+          statusDiv.textContent = "📝 Local draft - Sign in to save to cloud";
         } else {
           statusDiv.textContent = "✨ Ready";
         }
-        statusDiv.style.background = "rgba(0, 0, 0, 0.75)";
+      } else if (!accessToken && isAwaitingSignIn) {
+        statusDiv.textContent = "⚠️ Sign in to save your work";
+      } else if (isOffline) {
+        statusDiv.textContent = "📴 Offline mode - edits will sync when online";
+      } else if (currentFileId && currentFileName) {
+        // Extract clean file name (remove _AnyNotes.txt suffix)
+        let displayName = currentFileName.replace("_AnyNotes.txt", "");
+        // If display name is empty, use a default
+        if (!displayName || displayName.trim() === "") {
+          displayName = "Untitled Note";
+        }
+        statusDiv.textContent = `✅ ${displayName}`;
+      } else if (currentFileId && !currentFileName) {
+        // File ID exists but name not loaded yet
+        statusDiv.textContent = `✅ Note loaded`;
+      } else if (editor.value.trim() && editor.value !== "Start writing your notes...") {
+        statusDiv.textContent = "📝 Click Save to secure";
+      } else {
+        statusDiv.textContent = "✨ Ready";
       }
-    }, 2500);
-  }
+      statusDiv.style.background = "rgba(0, 0, 0, 0.75)";
+    }
+  }, 2500);
+}
   
   function isValidContent(content) {
     return content && content.trim().length > 0 && content !== "Start writing your notes...";
@@ -425,55 +434,65 @@ async function openFile(fileId) {
     localStorage.setItem("lastFileId", fileId);
     updateRecentFiles(fileId);
     await saveCurrentState();
-    let name = currentFileName ? currentFileName.replace("_AnyNotes.txt", "") : "";
-    showStatus(name ? `✅ Opened file successfully: ${name}` : "✅ Opened file successfully");
+    
+    // Extract and display the clean file name
+    let displayName = currentFileName ? currentFileName.replace("_AnyNotes.txt", "") : "";
+    if (!displayName || displayName.trim() === "") {
+      displayName = "Untitled Note";
+    }
+    showStatus(`✅ Opened: ${displayName}`);
   } catch (e) { 
     showStatus("❌ Failed to open file", true);
   } 
 }
   
   async function saveFile(isNew = false) {
-    if (!accessToken) {
-      alert("Please sign in first");
-      return false;
-    }
-    
-    let name = prompt("File name:", currentFileName?.replace("_AnyNotes.txt", "") || "MyNote");
-    if (!name) return false;
-    
-    const cleanName = name.replace(/[<>:"/\\|?*]/g, '');
-    const fullName = cleanName + "_AnyNotes.txt";
-    const existing = allFiles.find(f => f.name === fullName);
-    
-    try {
-      if (existing && !isNew) {
-        currentFileRevision = await updateFileContent(existing.id, editor.value);
-        currentFileId = existing.id;
-        currentFileName = existing.name;
-        lastContent = editor.value;
-        await saveVersion(currentFileId, editor.value, Date.now());
-        showStatus("✅ Saved");
-      } else {
-        const newId = await createFile(cleanName, editor.value);
-        currentFileId = newId;
-        currentFileName = fullName;
-        lastContent = editor.value;
-        await saveVersion(currentFileId, editor.value, Date.now());
-        showStatus("✅ Created");
-      }
-      await saveCurrentState();
-      await loadUserFiles();
-      updateRecentFiles(currentFileId);
-      return true;
-    } catch (e) {
-      if (e.message.includes("Network")) {
-        showStatus("📴 Offline: Will sync when online", false);
-        return true;
-      }
-      showStatus("❌ Save failed", true);
-      return false;
-    }
+  if (!accessToken) {
+    alert("Please sign in first");
+    return false;
   }
+  
+  let name = prompt("File name:", currentFileName?.replace("_AnyNotes.txt", "") || "MyNote");
+  if (!name) return false;
+  
+  const cleanName = name.replace(/[<>:"/\\|?*]/g, '');
+  const fullName = cleanName + "_AnyNotes.txt";
+  const existing = allFiles.find(f => f.name === fullName);
+  
+  try {
+    if (existing && !isNew) {
+      currentFileRevision = await updateFileContent(existing.id, editor.value);
+      currentFileId = existing.id;
+      currentFileName = existing.name;
+      lastContent = editor.value;
+      await saveVersion(currentFileId, editor.value, Date.now());
+      
+      // Show the actual file name in status
+      let displayName = currentFileName.replace("_AnyNotes.txt", "");
+      showStatus(`✅ Saved: ${displayName}`);
+    } else {
+      const newId = await createFile(cleanName, editor.value);
+      currentFileId = newId;
+      currentFileName = fullName;
+      lastContent = editor.value;
+      await saveVersion(currentFileId, editor.value, Date.now());
+      
+      let displayName = currentFileName.replace("_AnyNotes.txt", "");
+      showStatus(`✅ Created: ${displayName}`);
+    }
+    await saveCurrentState();
+    await loadUserFiles();
+    updateRecentFiles(currentFileId);
+    return true;
+  } catch (e) {
+    if (e.message.includes("Network")) {
+      showStatus("📴 Offline: Will sync when online", false);
+      return true;
+    }
+    showStatus("❌ Save failed", true);
+    return false;
+  }
+}
   
   async function handleSave() {
     if (!accessToken) {
